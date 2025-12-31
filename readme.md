@@ -1,5 +1,5 @@
 # Image Compare Tool
-
+![](pic/main.png)
 
 ## 脚本运行的依赖库
 openCV-python、numpy、Pillow
