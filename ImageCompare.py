@@ -145,13 +145,7 @@ class ModernPopup(tk.Toplevel):
     def __init__(self, parent, title, message, is_error=False):
         super().__init__(parent)
         self.title(title)
-        self.geometry("400x250")
-        self.resizable(False, False)
         
-        x = parent.winfo_rootx() + (parent.winfo_width() // 2) - 200
-        y = parent.winfo_rooty() + (parent.winfo_height() // 2) - 125
-        self.geometry(f"+{x}+{y}")
-
         bg_color = '#1e1e1e'
         fg_color = '#e0e0e0'
         accent_color = '#db6300'
@@ -168,7 +162,7 @@ class ModernPopup(tk.Toplevel):
                  font=('Microsoft YaHei UI', 16, 'bold')).pack(pady=(0, 15))
 
         msg_label = tk.Label(frame, text=message, bg=bg_color, fg=fg_color, 
-                             font=('Microsoft YaHei UI', 10), wraplength=350, justify=tk.LEFT)
+                             font=('Microsoft YaHei UI', 10), justify=tk.LEFT)
         msg_label.pack(expand=True, fill=tk.BOTH)
 
         btn = RoundedButton(frame, text="确 定", command=self.destroy, width=100, height=35)
@@ -176,6 +170,23 @@ class ModernPopup(tk.Toplevel):
         
         self.bind('<Return>', lambda e: self.destroy())
         self.bind('<Escape>', lambda e: self.destroy())
+        
+        self.update_idletasks()
+        
+        min_width = 400
+        min_height = 200
+        
+        msg_width = msg_label.winfo_reqwidth()
+        msg_height = msg_label.winfo_reqheight()
+        
+        total_width = max(min_width, msg_width + 80)
+        total_height = max(min_height, msg_height + 150)
+        
+        self.geometry(f"{total_width}x{total_height}")
+        
+        x = parent.winfo_rootx() + (parent.winfo_width() // 2) - (total_width // 2)
+        y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (total_height // 2)
+        self.geometry(f"+{x}+{y}")
 
 # 主程序
 class ImageComparer:
@@ -237,6 +248,11 @@ class ImageComparer:
         self.last_mouse_x = 0
         self.last_mouse_y = 0
 
+        self.show_ab_labels = False
+        self.ab_label_timer = None
+        self.ab_label_alpha = 1.0
+        self.swapped = False
+
         self.create_ui()
         self.show_initial_message()
         
@@ -244,6 +260,7 @@ class ImageComparer:
         self.root.bind('<KeyPress-d>', self.fine_tune_right)
         self.root.bind('<KeyPress-l>', self.toggle_line_display)
         self.root.bind('<KeyPress-k>', self.toggle_diff_display)
+        self.root.bind('<KeyPress-s>', self.swap_images)
         self.root.bind('<Control_L>', self.on_ctrl_press)
         self.root.bind('<Control_R>', self.on_ctrl_press)
         self.root.bind('<KeyRelease-Control_L>', self.on_ctrl_release)
@@ -259,19 +276,34 @@ class ImageComparer:
         self.create_canvas()
         self.create_slider()
 
+    # 导入按钮
     def create_import_buttons(self):
         import_frame = tk.Frame(self.main_container, bg=self.colors['bg'], height=60)
         import_frame.pack(side=tk.TOP, fill=tk.X, padx=0, pady=10)
         import_frame.pack_propagate(False)
 
-        btn_a = RoundedButton(import_frame, text="📁 导入图片A", command=self.load_image_a, 
-                              width=140, height=40, bg_color=self.colors['accent'], hover_color=self.colors['accent_hover'])
-        btn_a.pack(side=tk.LEFT, padx=20)
+        left_frame = tk.Frame(import_frame, bg=self.colors['bg'])
+        left_frame.pack(side=tk.LEFT, padx=20)
 
-        btn_b = RoundedButton(import_frame, text="📁 导入图片B", command=self.load_image_b, 
+        btn_a = RoundedButton(left_frame, text="📁 导入图片A", command=self.load_image_a, 
                               width=140, height=40, bg_color=self.colors['accent'], hover_color=self.colors['accent_hover'])
-        btn_b.pack(side=tk.RIGHT, padx=20)
+        btn_a.pack()
 
+        center_frame = tk.Frame(import_frame, bg=self.colors['bg'])
+        center_frame.pack(side=tk.LEFT, expand=True, fill=tk.X)
+
+        btn_swap = RoundedButton(center_frame, text="🔄 交换", command=self.swap_images, 
+                                 width=100, height=40, bg_color=self.colors['toolbar'], hover_color=self.colors['toolbar_hover'])
+        btn_swap.pack()
+
+        right_frame = tk.Frame(import_frame, bg=self.colors['bg'])
+        right_frame.pack(side=tk.RIGHT, padx=20)
+
+        btn_b = RoundedButton(right_frame, text="📁 导入图片B", command=self.load_image_b, 
+                              width=140, height=40, bg_color=self.colors['accent'], hover_color=self.colors['accent_hover'])
+        btn_b.pack()
+
+    # 工具栏
     def create_toolbar(self):
         toolbar = tk.Frame(self.main_container, bg=self.colors['toolbar'], height=50)
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
@@ -492,6 +524,7 @@ class ImageComparer:
             self.magnifier_zoom = max(1.0, min(16.0, self.magnifier_zoom + delta))
             self.update_image_display()
 
+    # 显示帮助消息
     def show_initial_message(self):
         canvas_width = 800
         canvas_height = 500
@@ -536,6 +569,35 @@ class ImageComparer:
 
     def load_image_a(self): self.load_image('A')
     def load_image_b(self): self.load_image('B')
+
+    def swap_images(self):
+        if self.img_a_final is None or self.img_b_final is None: return
+        
+        self.img_a_final, self.img_b_final = self.img_b_final, self.img_a_final
+        self.swapped = not self.swapped
+        self.calculate_diff()
+        
+        self.show_ab_labels = True
+        if self.ab_label_timer:
+            self.root.after_cancel(self.ab_label_timer)
+        self.ab_label_timer = self.root.after(1500, self.hide_ab_labels)
+        
+        self.redraw(self.split_x)
+
+    def hide_ab_labels(self):
+        self.fade_out_ab_labels()
+
+    def fade_out_ab_labels(self, alpha=1.0):
+        if alpha <= 0:
+            self.show_ab_labels = False
+            self.ab_label_alpha = 1.0
+            self.redraw(self.split_x)
+            return
+        
+        self.ab_label_alpha = alpha
+        self.redraw(self.split_x)
+        
+        self.root.after(30, lambda: self.fade_out_ab_labels(alpha - 0.05))
 
     def prepare_images(self):
         if self.img_a_cv is None or self.img_b_cv is None: return
@@ -591,6 +653,50 @@ class ImageComparer:
             bgr_color = self.hex_to_bgr(self.line_color)
             self.draw_line(canvas, (split_x, 0), (split_x, h), bgr_color, 
                           self.line_thickness, self.line_style)
+
+        if self.show_ab_labels:
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 2.0
+            font_thickness = 4
+            padding = 20
+            
+            text_a = "A"
+            text_b = "B"
+            
+            (text_w_a, text_h_a), _ = cv2.getTextSize(text_a, font, font_scale, font_thickness)
+            (text_w_b, text_h_b), _ = cv2.getTextSize(text_b, font, font_scale, font_thickness)
+            
+            box_w_a = text_w_a + padding * 2
+            box_h_a = text_h_a + padding * 2
+            box_w_b = text_w_b + padding * 2
+            box_h_b = text_h_b + padding * 2
+            
+            if self.swapped:
+                box_x_a = w - box_w_a - 20
+                box_y_a = h - box_h_a - 20
+                box_x_b = 20
+                box_y_b = h - box_h_b - 20
+            else:
+                box_x_a = 20
+                box_y_a = h - box_h_a - 20
+                box_x_b = w - box_w_b - 20
+                box_y_b = h - box_h_b - 20
+            
+            alpha = int(self.ab_label_alpha * 255)
+            
+            overlay = canvas.copy()
+            
+            cv2.rectangle(overlay, (box_x_a, box_y_a), (box_x_a + box_w_a, box_y_a + box_h_a), (0, 0, 0), -1)
+            cv2.rectangle(overlay, (box_x_a, box_y_a), (box_x_a + box_w_a, box_y_a + box_h_a), (255, 255, 255), 2)
+            cv2.putText(overlay, text_a, (box_x_a + padding, box_y_a + text_h_a + padding - 5), 
+                       font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+            
+            cv2.rectangle(overlay, (box_x_b, box_y_b), (box_x_b + box_w_b, box_y_b + box_h_b), (0, 0, 0), -1)
+            cv2.rectangle(overlay, (box_x_b, box_y_b), (box_x_b + box_w_b, box_y_b + box_h_b), (255, 255, 255), 2)
+            cv2.putText(overlay, text_b, (box_x_b + padding, box_y_b + text_h_b + padding - 5), 
+                       font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+            
+            cv2.addWeighted(overlay, alpha / 255.0, canvas, 1 - alpha / 255.0, 0, canvas)
 
         self.img_combined_bgr = canvas
         img_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
@@ -725,7 +831,8 @@ class ImageComparer:
                "• 鼠标滚轮：调整放大镜倍率\n"
                "• 键盘 A / D：微调中线位置\n"
                "• 键盘 L：快速显示/隐藏中线\n"
-               "• 键盘 K：快速显示/隐藏差异高亮")
+               "• 键盘 K：快速显示/隐藏差异高亮\n"
+               "• 键盘 S：切换显示A / B 图片")
         ModernPopup(self.root, "操作指南", msg)
     
     def fine_tune_left(self, event): 
