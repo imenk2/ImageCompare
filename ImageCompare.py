@@ -192,7 +192,7 @@ class ModernPopup(tk.Toplevel):
 class ImageComparer:
     def __init__(self, root_window):
         self.root = root_window
-        self.root.title("图片比较 - 专业版")
+        self.root.title("图片比较")
         self.root.geometry("1000x700")
         self.root.minsize(900, 600)
 
@@ -570,7 +570,7 @@ class ImageComparer:
     def load_image_a(self): self.load_image('A')
     def load_image_b(self): self.load_image('B')
 
-    def swap_images(self):
+    def swap_images(self, event=None):
         if self.img_a_final is None or self.img_b_final is None: return
         
         self.img_a_final, self.img_b_final = self.img_b_final, self.img_a_final
