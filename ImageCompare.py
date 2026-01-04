@@ -580,7 +580,7 @@ class ImageComparer:
         self.show_ab_labels = True
         if self.ab_label_timer:
             self.root.after_cancel(self.ab_label_timer)
-        self.ab_label_timer = self.root.after(1500, self.hide_ab_labels)
+        self.ab_label_timer = self.root.after(1000, self.hide_ab_labels)
         
         self.redraw(self.split_x)
 
